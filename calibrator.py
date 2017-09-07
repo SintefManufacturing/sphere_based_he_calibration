@@ -45,17 +45,20 @@ if (len(indices) != len(findices) or
     print('!!! WARNING !!! Mismatch between pose and scene indices')
 indices.sort()
 
-fibs = [m3d.Transform(np.loadtxt(os.path.join(datafolder, fibtmpl.format(i)))) for i in indices]
-oiss = [m3d.Transform(np.loadtxt(os.path.join(datafolder, oistmpl.format(i)))) for i in indices]
+fibs = [m3d.Transform(np.loadtxt(os.path.join(datafolder, fibtmpl.format(i))))
+        for i in indices]
+oiss = [m3d.Transform(np.loadtxt(os.path.join(datafolder, oistmpl.format(i))))
+        for i in indices]
 sios = [t.inverse for t in oiss]
 
 fib_sio_pairs = np.array(list(zip(fibs, sios)))
 
-# Eveluate inconsistencies
+# Simple consensus based eviction
 poses_minus = []
 for i in range(len(fib_sio_pairs)):
-    poses_minus.append(ParkMartinCalibrator(np.delete(fib_sio_pairs, i, axis=0)).sensor_in_flange.pose_vector)
+    poses_minus.append(ParkMartinCalibrator(
+        np.delete(fib_sio_pairs, i, axis=0)).sensor_in_flange.pose_vector)
 
-    
+
 # pmc = ParkMartinCalibrator(fib_sio_pairs)
 # np.savetxt(os.path.join(datafolder, 'sensor_in_flange.npytxt'), pmc.sensor_in_flange.pose_vector)
