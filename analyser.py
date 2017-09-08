@@ -14,6 +14,8 @@ __status__ = "Development"
 import os
 import datetime
 import re
+import argparse
+import glob
 
 import numpy as np
 import pcl
@@ -21,29 +23,45 @@ import pcl
 from sphere_recognition import find_object
 from naming import scenere, scenetmpl, fibre, fibtmpl, oisre, oistmpl
 
-# datafolder = 'data_' + datetime.date.today().isoformat()
-datafolder = 'data_2017-09-06'
-datafiles = os.listdir(datafolder)
 
-obj_dims = (0.15, 0.125)
+ap = argparse.ArgumentParser()
+ap.add_argument('--data_folder', type=str, default='data_2017-09-06')
+ap.add_argument('--indices', nargs='+', type=int,
+                help="""Only analyse specified indices""")
+ap.add_argument('--force_analysis', action='store_true')
+args = ap.parse_args()
+
+# data_folder = 'data_' + datetime.date.today().isoformat()
+data_folder = args.data_folder
+datafiles = os.listdir(data_folder)
+
+# Clear temporary files
+[os.remove(pcdf) for pcdf in glob.glob('*.pcd')]
+
+obj_dims = (0.15, 0.12)
 ball_radius = 0.037
 
-sindices = []
-findices = []
+sindices = set()
+findices = set()
 for fn in datafiles:
     sm = scenere.match(fn)
     if sm is not None:
-        sindices.append(int(sm.groups()[0]))
+        sindices.add(int(sm.groups()[0]))
         continue
     fm = fibre.match(fn)
     if fm is not None:
-        findices.append(int(fm.groups()[0]))
+        findices.add(int(fm.groups()[0]))
+print(findices, sindices)
+if findices != sindices:
+    print('!!! WARNING !!! Mismatch between fib pose ({}) and scene ({}) indices'
+          .format(sorted(findices), sorted(sindices)))
 
-indices = list(set(sindices).intersection(findices))
-if (len(indices) != len(findices) or
-    len(indices) != len(sindices)):
-    print('!!! WARNING !!! Mismatch between pose and scene indices')
-indices.sort()
+if args.indices is not None:
+    indices = sindices.intersection(findices).intersection(args.indices)
+else:
+    indices = sindices.intersection(findices)
+
+# indices.sort()
 
 scenes = []
 fibs = []
@@ -51,15 +69,16 @@ oiss = []
 valid_indices = []
 for i in indices:
     oisfname = oistmpl.format(i)
-    if oisfname in datafiles:
+    if oisfname in datafiles and not args.force_analysis:
         print('Object transform exists for index {}, skipping.'.format(i))
         valid_indices.append(i)
         continue
-    scene = pcl.load(os.path.join(datafolder, scenetmpl.format(i)))
+    print('Analysing index {}'.format(i))
+    scene = pcl.load(os.path.join(data_folder, scenetmpl.format(i)))
     ois = find_object(scene, obj_dims, ball_radius)
     if ois is not None:
-        np.savetxt(os.path.join(datafolder, oisfname), ois.pose_vector)
+        np.savetxt(os.path.join(data_folder, oisfname), ois.pose_vector)
         scenes.append(scene)
         oiss.append(ois)
-        fibs.append(np.loadtxt(os.path.join(datafolder, fibtmpl.format(i))))
+        fibs.append(np.loadtxt(os.path.join(data_folder, fibtmpl.format(i))))
         valid_indices.append(i)

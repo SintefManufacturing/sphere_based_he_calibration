@@ -21,9 +21,10 @@ import scipy.spatial as spsp
 
 
 class EuclideanClusterExtractor:
-    def __init__(self, nn_dist, min_pts=5, max_pts=None, min_max_length=None, max_max_length=None):
+    def __init__(self, nn_dist, nn_min=5, min_pts=5, max_pts=None, min_max_length=None, max_max_length=None):
         self._log = logging.getLogger('ECE')
         self.nn_dist = nn_dist
+        self.nn_min = nn_min
         self.min_pts=min_pts
         self.max_pts =max_pts
         self.min_max_length = min_max_length
@@ -48,9 +49,11 @@ class EuclideanClusterExtractor:
                 if pi in proc_points:                    
                     continue
                 # self._log.debug('Analysing point {}'.format(pi))
-                c.append(pi)
-                proc_points.append(pi)
-                queue.extend(kdt.query_ball_point(npc[pi], self.nn_dist))
+                pinns = kdt.query_ball_point(npc[pi], self.nn_dist)
+                if len(pinns) > self.nn_min:
+                    c.append(pi)
+                    proc_points.append(pi)
+                    queue.extend(pinns)
             self._log.debug('Cluster size {}'.format(len(c)))
             if len(c) > self.min_pts:
                 clusters.append(c)

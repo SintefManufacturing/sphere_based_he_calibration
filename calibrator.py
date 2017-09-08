@@ -53,12 +53,33 @@ sios = [t.inverse for t in oiss]
 
 fib_sio_pairs = np.array(list(zip(fibs, sios)))
 
+np.set_printoptions(precision=3)
+
+pmc = ParkMartinCalibrator(fib_sio_pairs)
+np.savetxt(os.path.join(datafolder, 'sensor_in_flange.npytxt'), pmc.sensor_in_flange.pose_vector)
+print(pmc.sensor_in_flange)
+
 # Simple consensus based eviction
 poses_minus = []
 for i in range(len(fib_sio_pairs)):
     poses_minus.append(ParkMartinCalibrator(
         np.delete(fib_sio_pairs, i, axis=0)).sensor_in_flange.pose_vector)
+poses_minus = np.array(poses_minus)
+print(poses_minus)
 
+pos = poses_minus[:,:3]
+pos_avg = np.average(pos, axis=0)
+pos_devv = pos - pos_avg
+pos_dev = np.linalg.norm(pos_devv, axis=1)
 
-# pmc = ParkMartinCalibrator(fib_sio_pairs)
-# np.savetxt(os.path.join(datafolder, 'sensor_in_flange.npytxt'), pmc.sensor_in_flange.pose_vector)
+rot = poses_minus[:,3:]
+rot_avg = np.average(rot, axis=0)
+rot_devv = rot - rot_avg
+rot_dev = np.linalg.norm(rot_devv, axis=1)
+
+if pos_dev.argmax() == rot_dev.argmax():
+    evict_idx = pos_dev.argmax()
+    print('Consensus eviction of index {}'.format(evict_idx))
+    sif = poses_minus[evict_idx]
+    print('Result : {}'.format(sif))
+    np.savetxt(os.path.join(datafolder, 'sensor_in_flange.npytxt'), sif)
