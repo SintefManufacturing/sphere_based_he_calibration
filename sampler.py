@@ -23,7 +23,7 @@ from pc_grabber import PCG
 from naming import scenetmpl, fibtmpl
 
 datafolder = 'data_' + datetime.date.today().isoformat()
-os.makedirs(datafolder)
+os.makedirs(datafolder, exist_ok=True)
 
 pcg = PCG()
 rob = Robot('192.168.0.90')

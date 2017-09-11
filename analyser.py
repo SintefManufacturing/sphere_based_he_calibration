@@ -25,7 +25,7 @@ from naming import scenere, scenetmpl, fibre, fibtmpl, oisre, oistmpl
 
 
 ap = argparse.ArgumentParser()
-ap.add_argument('--data_folder', type=str, default='data_2017-09-06')
+ap.add_argument('data_folder', type=str)
 ap.add_argument('--indices', nargs='+', type=int,
                 help="""Only analyse specified indices""")
 ap.add_argument('--force_analysis', action='store_true')
