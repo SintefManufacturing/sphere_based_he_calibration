@@ -19,7 +19,7 @@ import pcl
 import numpy as np
 import scipy.spatial as spsp
 
-from .euclidean_clustering import EuclideanClusterExtractor
+from srm_pc_utils.euclidean_clustering import EuclideanClusterExtractor
 logging.getLogger('ECE').setLevel(logging.INFO)
 
 # #live = False
