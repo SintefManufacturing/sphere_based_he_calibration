@@ -19,6 +19,7 @@ import pcl
 import numpy as np
 import scipy.spatial as spsp
 
+from srm_pc_utils.plane_segmentation import PlaneSegmenter
 from srm_pc_utils.euclidean_clustering import EuclideanClusterExtractor
 logging.getLogger('ECE').setLevel(logging.INFO)
 
@@ -33,6 +34,7 @@ logging.getLogger('ECE').setLevel(logging.INFO)
 #     pc = pcl.load('scene.pcd')
 #     npc = pc.to_array()
 #     print('!!!!! Warning !!!!! Using stored scene data !')
+
 
 def find_spheres(pc, radius, n_max=1):
     spheres = []
@@ -73,49 +75,28 @@ def find_object(pc, obj_dims, ball_radius):
         (npc[:, 2] < 1.5) *
         (np.sum(npc[:, :2]**2, axis=1) < 0.5**2)
     ]
-    pc=pcl.PointCloud(npc)
-    pcl.save(pc,'scene_cropped.pcd')
+    pc = pcl.PointCloud(npc)
+    pcl.save(pc, 'scene_cropped.pcd')
     print('Cropped (#PC {})'.format(pc.size))
 
     # Downsample
     vg = pc.make_voxel_grid_filter()
     vg.set_leaf_size(*(3*[0.01]))
     pc = vg.filter()
-    npc=pc.to_array()
-    pcl.save(pc,'scene_downsampled.pcd')
+    npc = pc.to_array()
+    pcl.save(pc, 'scene_downsampled.pcd')
     print('Downsampled (#PC {})'.format(pc.size))
 
     # Remove extension of planes of considerable goodness
-    pi = 0
-    while True:
-        # print('#PC : {}'.format(pc.size))
-        psegm = pc.make_segmenter_normals(ksearch=5)
-        psegm.set_model_type(pcl.SACMODEL_PLANE)
-        psegm.set_normal_distance_weight(0.1)
-        psegm.set_optimize_coefficients(True)
-        psegm.set_method_type(pcl.SAC_RANSAC)
-        psegm.set_distance_threshold(0.001)
-        psegm.set_max_iterations(1e4)
-        pidx, pmodel = psegm.segment()
-        # print('Identified plane: #{} {}'.format(len(pidx), pmodel))
-        if len(pidx) < 100:
-            break
-        # Match points with more tolerance. Using inner product with the
-        # plane vector, we may find the signed distance to the plane in
-        # the cloud.
-        npvec = m3d.geometry.Plane(coeffs=pmodel).plane_vector
-        pdists = np.abs(npvec.array.dot(pc.to_array().T) - 1)
-        # Find indexes of the extended plane
-        xpidx = np.where(pdists < 0.005)[0]
-        # print('Removing extended plane points: #{} {}'.format(len(xpidx), pmodel))
-        pl = pc.extract(xpidx)
-        pcl.save(pl, 'plane_{}.pcd'.format(pi))
-        pc = pc.extract(xpidx, negative=True)
-        pi += 1
+    psegm = PlaneSegmenter(distance_tolerance=0.001,
+                           normal_distance_weight=0.1,
+                           consume_distance=0.005,
+                           maximum_iterations=1e4,
+                           minimum_plane_points=100)
+    planes, pc = psegm(pc)
     npc = pc.to_array()
-    pcl.save(pc,'scene_curved.pcd')
+    pcl.save(pc, 'scene_curved.pcd')
     print('Filtered planes (#PC {})'.format(pc.size))
-
 
     # Remove isolated points
     sor = pc.make_statistical_outlier_filter()
@@ -123,13 +104,12 @@ def find_object(pc, obj_dims, ball_radius):
     sor.set_std_dev_mul_thresh(0.001)
     pc = sor.filter()
     print('#PC: {}'.format(pc.size))
-    npc=pc.to_array()
-    pcl.save(pc,'scene_dense.pcd')
+    npc = pc.to_array()
+    pcl.save(pc, 'scene_dense.pcd')
     print('Filtered outliers (#PC {})'.format(pc.size))
 
-
     # Finding three spheres directly in scene:
-    #spheres = find_spheres(pc, n_max=3)
+    # spheres = find_spheres(pc, n_max=3)
     # Finding spheres based on Euclidean Clustering
     ece = EuclideanClusterExtractor(nn_dist=0.015,  # ball_radius*(1-np.cos(np.pi/6)),
                                     min_pts=10,
@@ -141,20 +121,21 @@ def find_object(pc, obj_dims, ball_radius):
         print('!!!!!! No Clusters found !!!!!!')
         return None
     spheres = []
-    for i,ec in enumerate(ecs):
+    for i, ec in enumerate(ecs):
         pcl.save(ec, 'cluster_{:03d}.pcd'.format(i))
         ec_spheres = find_spheres(ec, ball_radius, n_max=1)
         spheres = [sph for sph in spheres if sph[0].size > 10]
         spheres += ec_spheres
     n_sph = len(spheres)
-    spheres.sort(key=lambda s:s[0].size, reverse=True)
+    spheres.sort(key=lambda s: s[0].size, reverse=True)
     for i in range(n_sph):
         pcl.save(spheres[i][0], 'sphere_{}.pcd'.format(i))
     centres = [m3d.Vector(sph[1][:3]) for sph in spheres]
     n_centres = len(centres)
 
     # Setup distance matrix
-    distm = spsp.distance.squareform(spsp.distance.pdist([c.array for c in centres]))
+    distm = spsp.distance.squareform(
+        spsp.distance.pdist([c.array for c in centres]))
     # distm = np.zeros((n_centres,n_centres))
     # for i in range(n_centres):
     #     for j in range(n_centres):
@@ -165,11 +146,12 @@ def find_object(pc, obj_dims, ball_radius):
     matchm0 = np.abs(distm-obj_dims[0]) < 0.01
     matchm1 = np.abs(distm-obj_dims[1]) < 0.01
     match = np.logical_and(matchm0.any(axis=1), matchm1.any(axis=1))
-    
+
     # Test if there is unambiguous object match
     matchidxs = np.where(match)[0]
     if len(matchidxs) > 1:
-        print('!!!!!! Match was ambiguous (#matches={}) !!!!!!'.format(len(matchidxs)))
+        print('!!!!!! Match was ambiguous (#matches={}) !!!!!!'
+              .format(len(matchidxs)))
         return None
     if len(matchidxs) == 0:
         print('!!!!!! No match found. !!!!!!')
@@ -183,7 +165,8 @@ def find_object(pc, obj_dims, ball_radius):
     sph_y_idx = errs_y.argmin()
     err_x = errs_x[sph_x_idx]
     err_y = errs_y[sph_y_idx]
-    print('Matching indices: 0:{}, x:{} ({}), y:{} ({})'.format(sph_0_idx, sph_x_idx, err_x, sph_y_idx, err_y))
+    print('Matching indices: 0:{}, x:{} ({}), y:{} ({})'
+          .format(sph_0_idx, sph_x_idx, err_x, sph_y_idx, err_y))
 
     # Single out the centres and form the x- and y-unit vectors.
     sph_0 = centres[sph_0_idx]
@@ -191,7 +174,7 @@ def find_object(pc, obj_dims, ball_radius):
     sph_y = centres[sph_y_idx]
     d_x = (sph_x-sph_0).normalized
     d_y = (sph_y-sph_0).normalized
-    
+
     # Form the object transform
     t_obj = m3d.Transform.new_from_xyp(d_x, d_y, sph_0)
     return t_obj
@@ -200,4 +183,3 @@ def find_object(pc, obj_dims, ball_radius):
     # ncdiffs = [d.length for d in cdiffs]
     # radii =  [sph[1][3] for sph in spheres]
     # npoints =  [sph[0] for sph in spheres]
-
