@@ -59,7 +59,7 @@ def find_spheres(pc, radius, n_max=1):
         kill_idx = k.query_ball_point(model[:3], 1.25 * model[3])
         pc=pc.extract(kill_idx, negative=True)
         if pc.size > 0:
-            pcl.save(pc, 'scene_after_{}.pcd'.format(si))
+            pcl.save(pc, 'tmp/scene_after_{}.pcd'.format(si))
         else:
             break
         si += 1
@@ -71,20 +71,22 @@ def find_object(pc, obj_dims, ball_radius):
     # Crop to cylinder segment
     print('Finding object (#PC {})'.format(pc.size))
     npc = npc[
-        (npc[:, 2] > 0.4) *
-        (npc[:, 2] < 1.5) *
-        (np.sum(npc[:, :2]**2, axis=1) < 0.5**2)
+        (npc[:, 2] > 0.4)
+        * (npc[:, 2] < 1.5)
+        # * (np.sum(npc[:, :2]**2, axis=1) < 0.5**2)
     ]
     pc = pcl.PointCloud(npc)
-    pcl.save(pc, 'scene_cropped.pcd')
+    pcl.save(pc, 'tmp/scene_cropped.pcd')
     print('Cropped (#PC {})'.format(pc.size))
 
     # Downsample
+    point_distance = 0.01
+    face_density = 1 / point_distance**2 
     vg = pc.make_voxel_grid_filter()
-    vg.set_leaf_size(*(3*[0.01]))
+    vg.set_leaf_size(*(3*[point_distance]))
     pc = vg.filter()
     npc = pc.to_array()
-    pcl.save(pc, 'scene_downsampled.pcd')
+    pcl.save(pc, 'tmp/scene_downsampled.pcd')
     print('Downsampled (#PC {})'.format(pc.size))
 
     # Remove extension of planes of considerable goodness
@@ -92,44 +94,45 @@ def find_object(pc, obj_dims, ball_radius):
                            normal_distance_weight=0.1,
                            consume_distance=0.005,
                            maximum_iterations=1e4,
-                           minimum_plane_points=100)
+                           minimum_plane_points=500,
+                           minimum_density=0.3*face_density)
     planes, pc = psegm(pc)
     npc = pc.to_array()
-    pcl.save(pc, 'scene_curved.pcd')
+    pcl.save(pc, 'tmp/scene_curved.pcd')
     print('Filtered planes (#PC {})'.format(pc.size))
 
     # Remove isolated points
     sor = pc.make_statistical_outlier_filter()
-    sor.set_mean_k(100)
-    sor.set_std_dev_mul_thresh(0.001)
+    sor.set_mean_k(10)
+    sor.set_std_dev_mul_thresh(0.1)
     pc = sor.filter()
     print('#PC: {}'.format(pc.size))
     npc = pc.to_array()
-    pcl.save(pc, 'scene_dense.pcd')
+    pcl.save(pc, 'tmp/scene_dense.pcd')
     print('Filtered outliers (#PC {})'.format(pc.size))
 
     # Finding three spheres directly in scene:
     # spheres = find_spheres(pc, n_max=3)
     # Finding spheres based on Euclidean Clustering
-    ece = EuclideanClusterExtractor(nn_dist=0.015,  # ball_radius*(1-np.cos(np.pi/6)),
+    ece = EuclideanClusterExtractor(nn_dist=2*point_distance,  # ball_radius*(1-np.cos(np.pi/6)),
                                     min_pts=10,
-                                    min_max_length=0.7*ball_radius,
+                                    min_max_length=0.3*ball_radius,
                                     max_max_length=2.3*ball_radius)
     ecs = ece.extract(pc)
     print('Extracted {} clusters'.format(len(ecs)))
     if len(ecs) == 0:
-        print('!!!!!! No Clusters found !!!!!!')
+        print('!!!!!!!\n!!!!!! No Clusters found !!!!!!\n!!!!!!!\n')
         return None
     spheres = []
     for i, ec in enumerate(ecs):
-        pcl.save(ec, 'cluster_{:03d}.pcd'.format(i))
+        pcl.save(ec, 'tmp/cluster_{:03d}.pcd'.format(i))
         ec_spheres = find_spheres(ec, ball_radius, n_max=1)
-        spheres = [sph for sph in spheres if sph[0].size > 10]
         spheres += ec_spheres
+    spheres = [sph for sph in spheres if sph[0].size > 10]
     n_sph = len(spheres)
     spheres.sort(key=lambda s: s[0].size, reverse=True)
     for i in range(n_sph):
-        pcl.save(spheres[i][0], 'sphere_{}.pcd'.format(i))
+        pcl.save(spheres[i][0], 'tmp/sphere_{}.pcd'.format(i))
     centres = [m3d.Vector(sph[1][:3]) for sph in spheres]
     n_centres = len(centres)
 
@@ -150,11 +153,11 @@ def find_object(pc, obj_dims, ball_radius):
     # Test if there is unambiguous object match
     matchidxs = np.where(match)[0]
     if len(matchidxs) > 1:
-        print('!!!!!! Match was ambiguous (#matches={}) !!!!!!'
+        print('!!!!!! Match was ambiguous (#matches={}) !!!!!!\n'
               .format(len(matchidxs)))
         return None
     if len(matchidxs) == 0:
-        print('!!!!!! No match found. !!!!!!')
+        print('!!!!!!!\n!!!!!! No match found. !!!!!!\n!!!!!!!\n')
         return None
     # Identify indexes for sphere 0
     sph_0_idx = matchidxs[0]

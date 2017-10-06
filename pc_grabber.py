@@ -37,6 +37,4 @@ class PCG:
         # cloud *= np.array(cfg.sensor_scale_factor, dtype=np.float32)
         cloud /= 1000.0
         cloud.shape = (cloud.shape[0] * cloud.shape[1], 3)
-        # cloud *= [1.02, 1.015, 1.0]
-        # cloud *= 1.01
         return cloud.astype(np.float32)

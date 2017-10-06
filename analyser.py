@@ -26,20 +26,39 @@ from naming import scenere, scenetmpl, fibre, fibtmpl, oisre, oistmpl
 
 ap = argparse.ArgumentParser()
 ap.add_argument('data_folder', type=str)
-ap.add_argument('--indices', nargs='+', type=int,
-                help="""Only analyse specified indices""")
-ap.add_argument('--force_analysis', action='store_true')
+ap.add_argument('-o', '--object_spec', type=str,
+                help="""File which can be evaluated as Python code, and which specifies
+                variables 'obj_dims', giving a pair of object
+                dimensions [m] with x-dimension first, and
+                'ball_radius', specifying the radius [m] of the object
+                balls.""")
+ap.add_argument('-i', '--index', nargs='+', type=int,
+                help="""Only analyse specified indices. Multiple indices separated by
+                spaces may be given.""")
+ap.add_argument('-f', '--force_analysis', action='store_true',
+                help="""Flag for forced analysis on all, or specified indices, irregardless
+                of whether cached analysis results from previous runs
+                are found.""")
 args = ap.parse_args()
 
-# data_folder = 'data_' + datetime.date.today().isoformat()
+# Set up the data folder and find data files
 data_folder = args.data_folder
 datafiles = os.listdir(data_folder)
 
+# Read the calibration object specification
+if args.object_spec is None or not os.path.isfile(args.object_spec):
+    raise Exception('An (existing) "obj_spec" file is required ("{}")'
+                    .format(args.object_spec))
+obj_dims = None
+ball_radius = None
+exec(open(args.object_spec).read())
+if obj_dims is None or ball_radius is None:
+    raise Exception('Either "ball_radius" or "obj_dims" was not specified'
+                    + ' in the "obj_spec" file. Was given "{}"'
+                    .format(args.object_spec))
+
 # Clear temporary files
 [os.remove(pcdf) for pcdf in glob.glob('*.pcd')]
-
-obj_dims = (0.15, 0.12)
-ball_radius = 0.037
 
 sindices = set()
 findices = set()
